@@ -1,0 +1,115 @@
+version: "2"
+services:
+  prometheus:
+    build:
+      context: prom
+      args:
+        - http_proxy=http://myproxy.com:8080
+        - https_proxy=http://myproxy.com:8080
+        - no_proxy=localhost,127.0.0.1,.mylan,/var/run/docker.sock
+    ports:
+      - 9090:9090
+    expose:
+      - 9090
+    links:
+      - exporter:export
+      - cadvisor
+    depends_on:
+      - cadvisor
+      - exporter
+      - sqlite3
+    labels:
+      - "name=prometheus"
+      - "description=Core of Promethues"
+      - "version=0.20.0"
+    container_name: prometheus_server
+    restart: always
+
+  nodeexporter:
+    build:
+      context: node
+      args:
+        - http_proxy=http://myproxy.com:8080
+        - https_proxy=http://myproxy.com:8080
+        - no_proxy=localhost,127.0.0.1,.mylan,/var/run/docker.sock
+    depends_on:
+      - sqlite3
+    ports:
+      - 9100:9100
+    expose:
+      - 9100
+    labels:
+      - "name=exporter"
+      - "description=Exports prom data"
+      - "version=latest"
+    container_name: prometheus_node_exporter
+    restart: always
+
+  exporter:
+    image: "prom/container-exporter"
+    volumes:
+      - /sys/fs/cgroup:/cgroup
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - sqlite3
+    ports:
+      - 9104:9104
+    expose:
+      - 9104
+    labels:
+      - "name=exporter"
+      - "description=Exports prom data"
+      - "version=latest"
+    container_name: prometheus_exporter
+    restart: always
+
+  sqlite3:
+    image: "prom/promdash"
+    command:
+      - "./bin/rake db:migrate"
+    volumes:
+      - "/tmp/prom:/tmp/prom"
+    environment:
+      - "DATABASE_URL=sqlite3:/tmp/prom/file.sqlite3"
+    restart: always
+
+  grafana:
+    image: "grafana/grafana"
+    depends_on:
+      - sqlite3
+    ports:
+      - "3000:3000"
+    expose:
+      - "3000"
+    volumes:
+      - /tmp/prom:/tmp/prom
+    environment:
+      - "DATABASE_URL=sqlite3:/tmp/prom/file.sqlite3"
+    labels:
+      - "name=grafana dashboard"
+      - "description=Dashboards for metrics"
+      - "version=latest"
+    container_name: prometheus_grafana
+    restart: always
+
+
+  cadvisor:
+    image: "google/cadvisor"
+    volumes:
+      - "/:/rootfs:ro"
+      - "/var/run:/var/run:rw"
+      - "/sys:/sys:ro"
+      - "/var/lib/docker/:/var/lib/docker:ro"
+    depends_on:
+      - sqlite3
+    ports:
+      - 9080:8080
+    expose:
+      - 9080
+    labels:
+      - "name=cAdvisor"
+      - "description=Google Container Advisor collects metrics from host and containers"
+      - "version=latest"
+    container_name: prometheus_cadvisor
+    restart: always
+
